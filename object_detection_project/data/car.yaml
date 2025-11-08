@@ -1,0 +1,6 @@
+path: c:\Users\Omar\Desktop\ids5\object-detection-video\object_detection_project\data\yolo_ft
+train: images/train
+val: images/val
+names:
+- omar_car
+nc: 1
