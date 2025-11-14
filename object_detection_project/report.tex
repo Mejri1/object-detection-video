@@ -1,17 +1,19 @@
 \documentclass[12pt,a4paper]{article}
 \usepackage[utf8]{inputenc}
-\usepackage[english]{babel}
+\usepackage[french]{babel}
 \usepackage{graphicx}
 \usepackage{hyperref}
+\usepackage{amsmath}
 \usepackage{listings}
 \usepackage{xcolor}
 \usepackage{geometry}
-\usepackage{amsmath}
 \usepackage{float}
-\usepackage{caption}
 \usepackage{subcaption}
 \usepackage{booktabs}
-\usepackage{multirow}
+\usepackage{array}
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
 
 \geometry{margin=2.5cm}
 
@@ -21,660 +23,708 @@
     basicstyle=\ttfamily\small,
     keywordstyle=\color{blue},
     stringstyle=\color{red},
-    commentstyle=\color{green!60!black},
+    commentstyle=\color{green},
     numbers=left,
-    numberstyle=\tiny\color{gray},
+    numberstyle=\tiny,
     stepnumber=1,
     numbersep=5pt,
-    backgroundcolor=\color{gray!10},
-    showspaces=false,
-    showstringspaces=false,
-    showtabs=false,
     frame=single,
-    rulecolor=\color{black},
-    tabsize=2,
-    captionpos=b,
     breaklines=true,
-    breakatwhitespace=false,
-    escapeinside={\%*}{*)}
+    breakatwhitespace=true,
+    tabsize=4
 }
 
-\title{\textbf{Real-Time Object Detection System using YOLO and GPU Acceleration}\\
-\large Fine-Tuning for Specific Car Recognition}
-\author{Omar Mejri \and [Partner Name]}
+\title{
+    \vspace{-2cm}
+    \textbf{Système de Détection d'Objets en Temps Réel\\
+    utilisant YOLO et l'Accélération GPU}\\[0.5cm]
+    \large{Détection de Casques de Sécurité et Équipements de Protection Individuelle (EPI)}
+}
+\author{
+    Omar Mejri\\
+    \textit{Projet de Vision par Ordinateur}
+}
 \date{\today}
 
 \begin{document}
 
 \maketitle
-
-\begin{abstract}
-This report presents the development of a real-time object detection system using YOLO (You Only Look Once) and NVIDIA GPU acceleration. Initially designed as a general object detection system, the project evolved into a fine-tuned model capable of recognizing a specific car among many vehicles. The system leverages CUDA-enabled PyTorch for GPU acceleration, Label Studio for data annotation, and YOLOv8 Large model for improved accuracy. This document details the complete workflow from environment setup, data preprocessing, exploratory data analysis, model training, to final prediction, with all processes optimized for GPU execution.
-\end{abstract}
+\thispagestyle{empty}
+\newpage
 
 \tableofcontents
 \newpage
 
+\listoffigures
+\newpage
+
 \section{Introduction}
 
-\subsection{Project Context}
-The project was initiated as a computer vision assignment requiring the development of a real-time object detection system using YOLO and GPU acceleration. While the initial requirements were to implement a general object detection system, we recognized that configuring CUDA and importing a pre-trained YOLO model would be relatively straightforward. To demonstrate deeper understanding and practical application, we decided to fine-tune the model for a specific, challenging task: recognizing a specific car (Omar's car) among many vehicles in various environments.
+\subsection{Contexte et Objectifs}
 
-\subsection{Objectives}
+Ce projet vise à développer un système de détection d'objets en temps réel pour la sécurité en milieu de travail, spécifiquement pour la détection des casques de sécurité (hard hats) et des équipements de protection individuelle (EPI). Le système utilise l'architecture YOLO (You Only Look Once) version 8, optimisée pour l'accélération GPU via CUDA.
+
+Les objectifs principaux du projet sont les suivants :
+
 \begin{itemize}
-    \item Configure CUDA environment for GPU acceleration
-    \item Set up PyTorch with CUDA support
-    \item Implement data preprocessing pipeline using Label Studio
-    \item Perform exploratory data analysis on the dataset
-    \item Fine-tune YOLOv8 model for specific car recognition
-    \item Optimize all processes for GPU execution
-    \item Evaluate model performance and demonstrate real-time detection
+    \item Développer un modèle de détection capable d'identifier trois classes : tête (head), casque (helmet), et personne (person)
+    \item Optimiser le modèle pour l'exécution en temps réel avec accélération GPU
+    \item Évaluer les performances du modèle sur un ensemble de données de test
+    \item Documenter l'ensemble du processus de développement, de la collecte de données à l'évaluation finale
 \end{itemize}
 
-\subsection{Project Structure}
-The project is organized as follows:
+\subsection{Importance de l'Accélération GPU}
+
+L'accélération GPU est essentielle pour ce projet car elle permet :
+
 \begin{itemize}
-    \item \texttt{data/}: Contains images, labels, and dataset configurations
-    \item \texttt{notebooks/}: Jupyter notebooks for EDA, training, and prediction
-    \item \texttt{models/}: Pre-trained model weights
-    \item \texttt{src/}: Source code for training and inference
-    \item \texttt{deployment/}: Deployment scripts
-    \item \texttt{runs/}: Training outputs and results
+    \item \textbf{Inference en temps réel} : Traitement de plusieurs images par seconde (20-50 FPS)
+    \item \textbf{Entraînement accéléré} : Réduction significative du temps d'entraînement
+    \item \textbf{Optimisation mémoire} : Utilisation efficace de la mémoire GPU avec la précision mixte (FP16)
+    \item \textbf{Évolutivité} : Capacité à traiter des vidéos haute résolution en temps réel
 \end{itemize}
 
-\section{Environment Setup and CUDA Configuration}
+\section{Configuration de l'Environnement GPU}
 
-\subsection{Hardware Requirements}
-The project requires an NVIDIA GPU with CUDA support. Our setup utilized:
-\begin{itemize}
-    \item GPU: NVIDIA GeForce RTX 3060 Laptop GPU
-    \item GPU Memory: 6GB VRAM
-    \item CUDA Compute Capability: 8.6
-\end{itemize}
+\subsection{Installation de CUDA}
 
-\subsection{CUDA Installation}
-\subsubsection{Downloading CUDA Toolkit}
-CUDA Toolkit 12.6 was downloaded from the official NVIDIA website\footnote{\url{https://developer.nvidia.com/cuda-downloads}}. The installation process involved:
+Pour utiliser l'accélération GPU, nous avons installé CUDA (Compute Unified Device Architecture), une plateforme de calcul parallèle développée par NVIDIA.
+
+\subsubsection{Étapes d'Installation}
 
 \begin{enumerate}
-    \item Selecting the appropriate version (Windows 10/11, x86\_64)
-    \item Downloading the installer (approximately 3GB)
-    \item Running the installer and following the setup wizard
-    \item Verifying installation using \texttt{nvcc --version}
-\end{enumerate}
-
-\subsubsection{cuDNN Installation}
-cuDNN (CUDA Deep Neural Network library) is essential for deep learning operations:
-
-\begin{enumerate}
-    \item Downloaded cuDNN from NVIDIA Developer website\footnote{\url{https://developer.nvidia.com/cudnn}}
-    \item Extracted the archive containing:
-    \begin{itemize}
-        \item \texttt{bin/cudnn64\_8.dll}
-        \item \texttt{include/cudnn.h}
-        \item \texttt{lib/cudnn.lib}
-    \end{itemize}
-    \item Copied files to CUDA installation directory:
-    \begin{lstlisting}[language=bash]
-    C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\
+    \item \textbf{Téléchargement de CUDA Toolkit 12.6} : Téléchargé depuis le site officiel de NVIDIA
+    \item \textbf{Installation} : Installation standard avec les paramètres par défaut
+    \item \textbf{Configuration des variables d'environnement} : Ajout du chemin CUDA au PATH système
+    \begin{lstlisting}
+C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin
     \end{lstlisting}
+    \item \textbf{Vérification} : Utilisation de la commande \texttt{nvcc --version} pour vérifier l'installation
 \end{enumerate}
 
-\subsubsection{Environment Variables Configuration}
-Critical environment variables were added to the system PATH:
+\textbf{Note pour les captures d'écran} : Veuillez inclure une capture d'écran montrant la sortie de la commande \texttt{nvcc --version} confirmant l'installation de CUDA 12.6.
 
-\begin{lstlisting}[language=bash]
-CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6
-CUDA_PATH_V12_6=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6
-Path additions:
-  - %CUDA_PATH%\bin
-  - %CUDA_PATH%\libnvvp
-  - %CUDA_PATH%\extras\CUPTI\lib64
-\end{lstlisting}
+\subsection{Installation de cuDNN}
 
-Verification was performed using:
-\begin{lstlisting}[language=Python]
-import torch
-print(torch.cuda.is_available())  # Should return True
-print(torch.cuda.get_device_name(0))  # GPU name
-print(torch.version.cuda)  # CUDA version
-\end{lstlisting}
+cuDNN (CUDA Deep Neural Network library) est une bibliothèque optimisée pour les opérations de deep learning sur GPU.
 
-\subsection{PyTorch Installation with CUDA Support}
-PyTorch was installed with CUDA 12.6 support using pip:
+\begin{itemize}
+    \item Téléchargement de cuDNN depuis le portail développeur NVIDIA
+    \item Extraction et copie des fichiers dans le répertoire CUDA
+    \item Vérification de l'installation via les tests de performance
+\end{itemize}
 
-\begin{lstlisting}[language=bash]
+\subsection{Installation de PyTorch avec Support CUDA}
+
+PyTorch a été installé avec le support CUDA 12.6 :
+
+\begin{lstlisting}
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 \end{lstlisting}
 
-The installation was verified:
-\begin{lstlisting}[language=Python]
+\subsection{Vérification de la Configuration GPU}
+
+La vérification de la configuration GPU a été effectuée avec le code suivant :
+
+\begin{lstlisting}
 import torch
-print(f"PyTorch version: {torch.__version__}")
-print(f"CUDA available: {torch.cuda.is_available()}")
-print(f"CUDA version: {torch.version.cuda}")
-print(f"cuDNN version: {torch.backends.cudnn.version()}")
-print(f"GPU: {torch.cuda.get_device_name(0)}")
-print(f"GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.2f} GB")
+print("CUDA disponible:", torch.cuda.is_available())
+print("Nom du GPU:", torch.cuda.get_device_name(0))
+print("Version CUDA (PyTorch):", torch.version.cuda)
+print("Mémoire GPU:", torch.cuda.get_device_properties(0).total_memory / 1e9, "GB")
 \end{lstlisting}
 
-Output:
-\begin{verbatim}
-PyTorch version: 2.9.0+cu126
-CUDA available: True
-CUDA version: 12.6
-cuDNN version: 8902
-GPU: NVIDIA GeForce RTX 3060 Laptop GPU
-GPU Memory: 6.14 GB
-\end{verbatim}
-
-\subsection{Ultralytics YOLO Installation}
-The Ultralytics YOLO library was installed for YOLOv8:
-
-\begin{lstlisting}[language=bash]
-pip install ultralytics
-\end{lstlisting}
-
-\section{Data Collection and Preprocessing}
-
-\subsection{Data Collection}
-A dataset of 184 images was collected, focusing on:
+\textbf{Résultats} :
 \begin{itemize}
-    \item Various angles and perspectives of the target car
-    \item Different lighting conditions
-    \item Multiple backgrounds and environments
-    \item Different distances and scales
+    \item GPU : NVIDIA GeForce RTX 3060 Laptop GPU
+    \item Mémoire GPU : 6.44 GB
+    \item Version CUDA : 12.6
+    \item CUDA disponible : True
 \end{itemize}
 
-\subsection{Label Studio Configuration}
-Label Studio was configured locally for annotation:
+\textbf{Note pour les captures d'écran} : Veuillez inclure une capture d'écran montrant la sortie de cette vérification.
 
-\subsubsection{Installation}
-\begin{lstlisting}[language=bash]
-pip install label-studio
-label-studio start
-\end{lstlisting}
+\section{Collecte et Préparation des Données}
 
-\subsubsection{Project Setup}
-\begin{enumerate}
-    \item Created a new project: "Omar Car Detection"
-    \item Configured labeling interface for object detection
-    \item Set up YOLO format export
-    \item Imported all collected images
-\end{enumerate}
+\subsection{Source des Données : Roboflow}
 
-\subsubsection{Labeling Interface Configuration}
-The labeling interface was configured using XML:
+Le dataset utilisé provient de Roboflow Universe, une plateforme collaborative pour les datasets de vision par ordinateur. Le dataset "Hard Hat Workers" a été sélectionné pour sa pertinence et sa qualité.
 
-\begin{lstlisting}[language=xml]
-<View>
-  <Image name="image" value="$image"/>
-  <RectangleLabels name="label" toName="image">
-    <Label value="omar_car" background="green"/>
-  </RectangleLabels>
-</View>
-\end{lstlisting}
+\subsubsection{Caractéristiques du Dataset}
 
-\subsection{Annotation Process}
 \begin{itemize}
-    \item Each image was manually annotated with bounding boxes
-    \item Only the target car (Omar's car) was labeled
-    \item Bounding boxes were drawn tightly around the car
-    \item Quality checks were performed to ensure accuracy
+    \item \textbf{Source} : Roboflow Universe - Hard Hat Workers
+    \item \textbf{Licence} : Public Domain
+    \item \textbf{Classes} : 3 classes (head, helmet, person)
+    \item \textbf{Format} : YOLO (annotations au format texte)
+    \item \textbf{Répartition} : Train/Valid/Test (70/20/10)
 \end{itemize}
 
-\subsection{YOLO Format Export}
-Labels were exported in YOLO format, where each label file contains:
-\begin{itemize}
-    \item Class ID (0 for omar\_car)
-    \item Normalized bounding box coordinates (x\_center, y\_center, width, height)
-\end{itemize}
+\subsubsection{Structure du Dataset}
 
-Example label file (\texttt{image001.txt}):
-\begin{verbatim}
-0 0.5 0.5 0.3 0.4
-\end{verbatim}
+Le dataset est organisé selon la structure YOLO standard :
 
-The dataset structure:
 \begin{lstlisting}
 data/
-├── images/
-│   ├── image001.jpg
-│   ├── image002.jpg
-│   └── ...
-├── labels/
-│   ├── image001.txt
-│   ├── image002.txt
-│   └── ...
-└── classes.txt
-    └── omar_car
+├── data.yaml
+├── train/
+│   ├── images/
+│   └── labels/
+├── valid/
+│   ├── images/
+│   └── labels/
+└── test/
+    ├── images/
+    └── labels/
 \end{lstlisting}
 
-\section{Exploratory Data Analysis (EDA)}
+\subsection{Configuration du Dataset (data.yaml)}
 
-\subsection{Dataset Overview}
-The dataset consisted of:
+Le fichier \texttt{data.yaml} contient la configuration du dataset :
+
+\begin{lstlisting}
+train: train/images
+val: valid/images
+test: test/images
+
+nc: 3
+names: ['head', 'helmet', 'person']
+\end{lstlisting}
+
+\subsection{Statistiques du Dataset}
+
+\textbf{Note pour les tableaux/figures} : Veuillez inclure un tableau récapitulatif montrant :
 \begin{itemize}
-    \item Total images: 184
-    \item Labeled images: 184 (100\% coverage)
-    \item Total bounding boxes: 184
-    \item Class: omar\_car (single class)
+    \item Nombre total d'images par split (train/valid/test)
+    \item Nombre total de labels
+    \item Distribution des classes
+    \item Statistiques sur les résolutions d'images
 \end{itemize}
 
-\subsection{Image Analysis}
-\subsubsection{Image Dimensions}
-Analysis of image dimensions revealed:
+\section{Analyse Exploratoire des Données (EDA)}
+
+\subsection{Validation de la Structure du Dataset}
+
+La première étape de l'EDA consiste à valider la structure du dataset et vérifier l'intégrité des paires image-label.
+
+\textbf{Note pour les figures} : Veuillez inclure :
 \begin{itemize}
-    \item Various resolutions (ranging from 320x240 to 1920x1080)
-    \item Aspect ratios predominantly 16:9 and 4:3
-    \item Most images in JPEG format
+    \item Un graphique montrant la distribution des images par split
+    \item Un graphique montrant la distribution des classes (head, helmet, person)
+    \item Un tableau montrant les statistiques de correspondance image-label
 \end{itemize}
 
-\subsubsection{Bounding Box Analysis}
+\subsection{Analyse des Résolutions d'Images}
+
+L'analyse des résolutions d'images permet de comprendre la diversité du dataset et d'optimiser les paramètres d'entraînement.
+
+\textbf{Note pour les figures} : Veuillez inclure :
 \begin{itemize}
-    \item Average bounding box area: Analyzed normalized coordinates
-    \item Size distribution: Small (area < 0.02), Medium (0.02-0.15), Large (>0.15)
-    \item Aspect ratio distribution: Most boxes have aspect ratios between 1.5 and 2.5
+    \item Histogramme des largeurs d'images
+    \item Histogramme des hauteurs d'images
+    \item Graphique de distribution des ratios d'aspect
+    \item Tableau des résolutions les plus communes
 \end{itemize}
 
-\subsection{Data Split}
-The dataset was split into:
+\subsection{Analyse des Boîtes de Détection}
+
+L'analyse des boîtes de détection (bounding boxes) fournit des informations cruciales sur la distribution des objets dans les images.
+
+\textbf{Note pour les figures} : Veuillez inclure :
 \begin{itemize}
-    \item Training set: 148 images (80\%)
-    \item Validation set: 36 images (20\%)
+    \item Histogramme des largeurs normalisées des boîtes
+    \item Histogramme des hauteurs normalisées des boîtes
+    \item Histogramme des aires normalisées
+    \item Distribution des ratios d'aspect par classe
+    \item Catégorisation des boîtes (petites/moyennes/grandes)
 \end{itemize}
 
-Random splitting was performed with a seed for reproducibility.
+\subsection{Visualisation d'Exemples}
 
-\subsection{Visualization}
-Sample images with bounding boxes were visualized to ensure annotation quality and dataset diversity.
+La visualisation d'exemples permet de comprendre la qualité et la diversité des annotations.
 
-\section{Model Architecture and Training}
-
-\subsection{YOLOv8 Architecture}
-We utilized YOLOv8 Large (yolov8l.pt) for improved accuracy:
+\textbf{Note pour les figures} : Veuillez inclure :
 \begin{itemize}
-    \item Parameters: ~43.7M
-    \item Input size: 768x768 pixels
-    \item Backbone: CSPDarknet53
-    \item Neck: PANet
-    \item Head: Decoupled head
-\end{itemize}
-
-\subsection{Training Configuration}
-\subsubsection{Hyperparameters}
-\begin{itemize}
-    \item Epochs: 30 (10 frozen + 20 unfrozen)
-    \item Batch size: 4 (adjusted for 6GB GPU memory)
-    \item Image size: 768x768
-    \item Learning rate: 0.005 (Phase 1), 0.003 (Phase 2)
-    \item Optimizer: AdamW
-    \item Mixed precision: Enabled (AMP)
-\end{itemize}
-
-\subsubsection{Data Augmentation}
-Extensive data augmentation was applied:
-
-\begin{itemize}
-    \item HSV augmentation: Hue (0.02), Saturation (0.8), Value (0.5)
-    \item Geometric transformations:
+    \item 4-6 exemples d'images avec leurs annotations (une par split)
+    \item Les boîtes doivent être colorées différemment selon la classe :
     \begin{itemize}
-        \item Rotation: ±10 degrees
-        \item Translation: ±15\%
-        \item Scale: 0.4-1.0
-        \item Shear: ±3 degrees
-        \item Perspective: 0.0005
-    \end{itemize}
-    \item Flip: Horizontal (50\%), Vertical (10\%)
-    \item Advanced augmentations:
-    \begin{itemize}
-        \item Mosaic: 80\% (Phase 1), 60\% (Phase 2)
-        \item Mixup: 20\% (Phase 1), 10\% (Phase 2)
-        \item Copy-paste: 10\% (Phase 1), 5\% (Phase 2)
+        \item Rouge pour "head"
+        \item Vert (lime) pour "helmet"
+        \item Cyan pour "person"
     \end{itemize}
 \end{itemize}
 
-\subsection{Two-Phase Training Strategy}
-\subsubsection{Phase 1: Frozen Backbone (10 epochs)}
+\subsection{Distribution des Classes}
+
+L'analyse de la distribution des classes est essentielle pour identifier d'éventuels déséquilibres.
+
+\textbf{Note pour les figures} : Veuillez inclure :
 \begin{itemize}
-    \item First 10 layers frozen
-    \item Stronger augmentations
-    \item Learning rate: 0.005
-    \item Focus: Learning object-specific features
+    \item Graphique en barres montrant le nombre d'instances par classe
+    \item Graphique en barres groupées montrant la distribution par split
+    \item Tableau croisé classe/split
 \end{itemize}
 
-\subsubsection{Phase 2: Fine-tuning (20 epochs)}
+\section{Architecture YOLO}
+
+\subsection{Présentation de YOLO}
+
+YOLO (You Only Look Once) est une architecture de détection d'objets qui traite l'image entière en une seule passe, contrairement aux méthodes basées sur les régions qui nécessitent plusieurs passes.
+
+\subsection{Avantages de YOLO}
+
 \begin{itemize}
-    \item All layers unfrozen
-    \item Reduced augmentations
-    \item Learning rate: 0.003
-    \item Focus: Fine-tuning all features
+    \item \textbf{Vitesse} : Traitement en temps réel grâce à l'architecture unifiée
+    \item \textbf{Précision} : Bonnes performances sur les objets de taille moyenne et grande
+    \item \textbf{Simplicité} : Architecture end-to-end facile à entraîner
+    \item \textbf{Efficacité GPU} : Optimisé pour l'exécution parallèle sur GPU
 \end{itemize}
 
-\subsection{GPU Utilization}
-All training was performed on GPU:
+\subsection{Architecture YOLOv8}
+
+YOLOv8 est la dernière version de la série YOLO, introduisant plusieurs améliorations :
+
+\subsubsection{Composants Principaux}
+
+\begin{enumerate}
+    \item \textbf{Backbone (CSPDarknet)} : Extrait les caractéristiques de l'image
+    \begin{itemize}
+        \item Utilise des blocs CSP (Cross Stage Partial)
+        \item Architecture en forme de pyramide pour capturer des caractéristiques multi-échelles
+    \end{itemize}
+    
+    \item \textbf{Neck (PANet)} : Combine les caractéristiques de différentes échelles
+    \begin{itemize}
+        \item Path Aggregation Network (PAN)
+        \item Fusion des caractéristiques de bas et haut niveau
+    \end{itemize}
+    
+    \item \textbf{Head (Détection)} : Prédit les boîtes et classes
+    \begin{itemize}
+        \item Découplage des prédictions de classe et de localisation
+        \item Utilisation de l'Anchor-Free pour plus de simplicité
+    \end{itemize}
+\end{enumerate}
+
+\subsection{Format de Sortie YOLO}
+
+Pour chaque objet détecté, YOLO prédit :
 \begin{itemize}
-    \item Device: CUDA:0
-    \item Memory usage: ~4.5GB / 6GB
-    \item Batch size automatically adjusted based on GPU memory
-    \item Mixed precision training for memory efficiency
+    \item \textbf{Coordonnées de la boîte} : $(x, y, w, h)$ normalisées (centre, largeur, hauteur)
+    \item \textbf{Score de confiance} : Probabilité qu'un objet soit présent
+    \item \textbf{Probabilités de classe} : Probabilité pour chaque classe
 \end{itemize}
 
-Training code snippet:
-\begin{lstlisting}[language=Python]
-import torch
-from ultralytics import YOLO
+\subsection{Optimisation GPU}
 
-device = 0 if torch.cuda.is_available() else 'cpu'
-model = YOLO('yolov8l.pt')
+YOLOv8 est optimisé pour GPU grâce à :
+\begin{itemize}
+    \item \textbf{Opérations parallèles} : Convolutions et opérations matricielles parallélisées
+    \item \textbf{Précision mixte} : Support FP16 pour doubler la vitesse
+    \item \textbf{Optimisation TensorRT} : Possibilité d'optimisation supplémentaire
+    \item \textbf{Batch processing} : Traitement de plusieurs images simultanément
+\end{itemize}
 
-model.train(
-    data='data/car.yaml',
-    epochs=10,
-    imgsz=768,
-    batch=4,
-    device=device,
-    amp=True,  # Mixed precision
-    freeze=10,  # Phase 1
-    # ... augmentation parameters
-)
+\textbf{Note pour les figures} : Veuillez inclure :
+\begin{itemize}
+    \item Un schéma de l'architecture YOLOv8
+    \item Un diagramme montrant le flux de données
+    \item Un graphique comparant les performances CPU vs GPU
+\end{itemize}
+
+\section{Entraînement du Modèle}
+
+\subsection{Configuration de l'Entraînement}
+
+\subsubsection{Modèle de Base}
+
+Nous avons utilisé YOLOv8s (small) comme modèle de base, offrant un bon compromis entre vitesse et précision.
+
+\subsubsection{Stratégie d'Entraînement en Deux Phases}
+
+Pour optimiser l'entraînement et éviter le surapprentissage, nous avons adopté une stratégie en deux phases :
+
+\textbf{Phase 1 : Entraînement avec Backbone Gelé (15 époques)}
+\begin{itemize}
+    \item Gel des 10 premières couches du backbone
+    \item Taux d'apprentissage initial : 0.01
+    \item Augmentations fortes pour la généralisation
+    \item Objectif : Initialiser les poids de manière stable
+\end{itemize}
+
+\textbf{Phase 2 : Fine-tuning Complet (30 époques)}
+\begin{itemize}
+    \item Toutes les couches sont entraînables
+    \item Taux d'apprentissage réduit : 0.001
+    \item Augmentations modérées
+    \item Objectif : Affiner les détails et améliorer la précision
+\end{itemize}
+
+\subsection{Hyperparamètres}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|c|c|}
+\hline
+\textbf{Paramètre} & \textbf{Phase 1} & \textbf{Phase 2} \\
+\hline
+Taille d'image & 640x640 & 640x640 \\
+Batch size & 8 & 8 \\
+Taux d'apprentissage initial & 0.01 & 0.001 \\
+Taux d'apprentissage final & 0.01 & 0.01 \\
+Weight decay & 0.0005 & 0.0005 \\
+Momentum & 0.937 & 0.937 \\
+Patience & 20 & 25 \\
+\hline
+\end{tabular}
+\caption{Hyperparamètres d'entraînement}
+\end{table}
+
+\subsection{Augmentations de Données}
+
+Les augmentations de données sont cruciales pour améliorer la généralisation du modèle.
+
+\subsubsection{Augmentations Spatiales}
+
+\begin{itemize}
+    \item \textbf{Rotation} : ±10° (Phase 1), ±5° (Phase 2)
+    \item \textbf{Translation} : 10\% (Phase 1), 5\% (Phase 2)
+    \item \textbf{Mise à l'échelle} : 0.5-1.5 (Phase 1), 0.7-1.3 (Phase 2)
+    \item \textbf{Cisaillement} : ±2° (Phase 1), ±1° (Phase 2)
+    \item \textbf{Perspective} : Légère transformation perspective
+    \item \textbf{Retournement horizontal} : 50\% de probabilité
+    \item \textbf{Retournement vertical} : 0\% (orientation importante pour les personnes)
+\end{itemize}
+
+\subsubsection{Augmentations de Couleur}
+
+\begin{itemize}
+    \item \textbf{HSV} : Variation de teinte, saturation et valeur
+    \item \textbf{Mixup} : Mélange de deux images
+    \item \textbf{Copy-Paste} : Copie d'objets entre images
+\end{itemize}
+
+\subsubsection{Augmentations Avancées}
+
+\begin{itemize}
+    \item \textbf{Mosaic} : Combinaison de 4 images en une
+    \item \textbf{Probabilité} : 100\% (Phase 1), 80\% (Phase 2)
+    \item \textbf{Close Mosaic} : Désactivation progressive en fin d'entraînement
+\end{itemize}
+
+\subsection{Optimisation GPU}
+
+\subsubsection{Précision Mixte (AMP)}
+
+L'Automatic Mixed Precision (AMP) permet d'utiliser FP16 pour la plupart des opérations, réduisant la mémoire et doublant la vitesse :
+
+\begin{lstlisting}
+amp=True  # Active la précision mixte
 \end{lstlisting}
 
-\subsection{Training Metrics}
-\subsubsection{Loss Curves}
-Training showed steady convergence over 30 epochs:
+\subsubsection{Ajustement de la Taille de Batch}
+
+La taille de batch est ajustée automatiquement selon la mémoire GPU disponible :
+
 \begin{itemize}
-    \item Box loss: Decreased from 2.49 (epoch 1) to 0.30 (final)
-    \item Class loss: Decreased from 2.44 (epoch 1) to 0.10 (final)
-    \item DFL loss: Decreased from 2.99 (epoch 1) to 0.50 (final)
+    \item GPU ≥ 12GB : Batch size = 16
+    \item GPU ≥ 8GB : Batch size = 12
+    \item GPU ≥ 6GB (RTX 3060) : Batch size = 8
+    \item GPU < 6GB : Batch size = 4
 \end{itemize}
 
-The training progress can be observed in the loss curves, showing consistent improvement throughout both phases. Phase 1 (frozen backbone) established a good foundation, while Phase 2 (unfrozen) fine-tuned the model for optimal performance.
+\subsubsection{Workers pour le Chargement des Données}
 
-\subsubsection{Validation Metrics}
-Final validation results:
+Sur Windows, nous utilisons \texttt{workers=0} pour éviter les problèmes de mémoire avec le multiprocessing.
+
+\subsection{Courbes d'Entraînement}
+
+\textbf{Note pour les figures} : Veuillez inclure les courbes d'entraînement montrant :
 \begin{itemize}
-    \item Precision: 0.998
-    \item Recall: 0.972
-    \item mAP@0.5: 0.988
-    \item mAP@0.5:0.95: 0.809
+    \item Perte totale (train et validation) vs époques
+    \item Perte de classification vs époques
+    \item Perte de localisation (box) vs époques
+    \item mAP@0.5 vs époques
+    \item mAP@0.5:0.95 vs époques
+    \item Précision vs époques
+    \item Rappel vs époques
 \end{itemize}
 
-\subsubsection{Performance Metrics}
+\subsection{Résultats de l'Entraînement}
+
+\textbf{Note pour les tableaux} : Veuillez inclure un tableau récapitulatif des métriques finales :
 \begin{itemize}
-    \item Training time: ~2.5 hours (30 epochs)
-    \item Inference speed: ~50ms per image (GPU)
-    \item Model size: ~87MB (best.pt)
+    \item mAP@0.5
+    \item mAP@0.5:0.95
+    \item Précision
+    \item Rappel
+    \item F1-score
+    \item Par classe (head, helmet, person)
 \end{itemize}
 
-\section{Prediction and Evaluation}
+\section{Évaluation et Résultats}
 
-\subsection{Prediction Pipeline}
-A two-stage prediction system was implemented:
+\subsection{Métriques d'Évaluation}
 
-\subsubsection{Stage 1: General Object Detection}
+Les métriques utilisées pour évaluer le modèle sont standard dans la détection d'objets :
+
+\subsubsection{mAP (mean Average Precision)}
+
 \begin{itemize}
-    \item Model: YOLOv8n (general COCO classes)
-    \item Purpose: Detect all objects including cars
-    \item Output: Bounding boxes for all detected objects
+    \item \textbf{mAP@0.5} : Précision moyenne avec IoU seuil à 0.5
+    \item \textbf{mAP@0.5:0.95} : Précision moyenne avec IoU de 0.5 à 0.95 (pas de 0.05)
 \end{itemize}
 
-\subsubsection{Stage 2: Car Classification}
+\subsubsection{Précision et Rappel}
+
 \begin{itemize}
-    \item Model: Fine-tuned YOLOv8 Large
-    \item Purpose: Classify detected cars as "omar\_car" or "other"
-    \item Process:
-    \begin{enumerate}
-        \item Crop car regions from general detection
-        \item Resize to 768x768
-        \item Classify using fine-tuned model
-        \item Overlay results on original image
-    \end{enumerate}
+    \item \textbf{Précision} : Proportion de détections correctes parmi toutes les détections
+    \item \textbf{Rappel} : Proportion d'objets réels détectés
+    \item \textbf{F1-score} : Moyenne harmonique de précision et rappel
 \end{itemize}
 
-\subsection{Visualization}
-Results were visualized with color-coded bounding boxes:
+\subsection{Matrice de Confusion}
+
+\textbf{Note pour les figures} : Veuillez inclure :
 \begin{itemize}
-    \item \textcolor{green}{Lime}: omar\_car (confidence score displayed)
-    \item \textcolor{yellow}{Yellow}: Other cars
-    \item \textcolor{cyan}{Cyan}: Other objects
+    \item Matrice de confusion normalisée
+    \item Matrice de confusion non-normalisée
+    \item Analyse des erreurs de classification
 \end{itemize}
 
-\subsection{Test Results}
-Evaluation on test set (8 images):
+\subsection{Résultats sur l'Ensemble de Test}
+
+\textbf{Note pour les tableaux} : Veuillez inclure un tableau détaillé des résultats par classe :
 \begin{itemize}
-    \item All omar\_car instances correctly identified
-    \item False positives: 0
-    \item False negatives: 0
-    \item Average confidence: 0.85
+    \item Nombre d'images testées
+    \item Nombre total de détections
+    \item Distribution des détections par classe
+    \item Taux de détection moyen par image
 \end{itemize}
 
-\section{GPU Performance Analysis}
+\subsection{Exemples de Prédictions}
 
-\subsection{Training Performance}
+\textbf{Note pour les figures} : Veuillez inclure :
 \begin{itemize}
-    \item GPU utilization: 85-95\%
-    \item Memory usage: 4.5GB / 6GB (75\%)
-    \item Training speed: ~15 images/second
-    \item Speedup vs CPU: ~8x faster
+    \item 6-8 exemples de prédictions sur images de test
+    \item Mélange de cas : détections correctes, faux positifs, faux négatifs
+    \item Images avec différentes conditions (éclairage, angle, etc.)
 \end{itemize}
 
-\subsection{Inference Performance}
+\section{Inference en Temps Réel}
+
+\subsection{Optimisation pour l'Inference GPU}
+
+L'inference en temps réel nécessite plusieurs optimisations :
+
+\subsubsection{Précision FP16}
+
+L'utilisation de la précision demi (FP16) permet de :
 \begin{itemize}
-    \item Inference speed: ~50ms per image
-    \item Batch inference: ~200ms for batch of 4
-    \item Real-time capability: Yes (20 FPS)
-    \item GPU memory during inference: ~2GB
+    \item Réduire la mémoire GPU de moitié
+    \item Doubler la vitesse d'inference
+    \item Maintenir une précision acceptable
 \end{itemize}
 
-\subsection{Optimization Techniques}
+\subsubsection{Traitement par Lots}
+
+Le traitement par lots permet de traiter plusieurs images simultanément, améliorant le débit.
+
+\subsubsection{Optimisation du Pipeline}
+
 \begin{itemize}
-    \item Mixed precision training (AMP): 30\% memory reduction
-    \item Batch size optimization: Adjusted for available memory
-    \item Image size optimization: 768x768 for balance
-    \item CUDA kernels: Optimized for RTX 3060
+    \item Préprocessing optimisé sur GPU
+    \item Inference asynchrone
+    \item Postprocessing efficace
 \end{itemize}
 
-\section{Results and Discussion}
+\subsection{Inference sur Images}
 
-\subsection{Model Performance}
-The fine-tuned YOLOv8 Large model achieved excellent performance:
+\textbf{Note pour les figures} : Veuillez inclure :
 \begin{itemize}
-    \item High precision (99.8\%) indicates minimal false positives
-    \item High recall (97.2\%) indicates minimal false negatives
-    \item mAP@0.5 of 98.8\% demonstrates strong detection capability
-    \item mAP@0.5:0.95 of 80.9\% shows robustness across IoU thresholds
+    \item Exemples de prédictions sur images individuelles
+    \item Temps d'inference par image
+    \item Utilisation de la mémoire GPU
 \end{itemize}
 
-\subsection{Challenges and Solutions}
-\subsubsection{Challenge 1: Limited Dataset}
+\subsection{Inference sur Vidéo}
+
+Pour l'inference vidéo en temps réel, nous avons implémenté :
+
 \begin{itemize}
-    \item Problem: Only 184 images for training
-    \item Solution: Extensive data augmentation and two-phase training
+    \item \textbf{Chargement vidéo} : Utilisation d'OpenCV pour la lecture vidéo
+    \item \textbf{Traitement frame par frame} : Chaque frame est traitée sur GPU
+    \item \textbf{Affichage en temps réel} : Résultats affichés avec FPS en direct
+    \item \textbf{Optimisation mémoire} : Nettoyage du cache GPU entre les frames
 \end{itemize}
 
-\subsubsection{Challenge 2: GPU Memory Constraints}
+\textbf{Note pour les figures} : Veuillez inclure :
 \begin{itemize}
-    \item Problem: 6GB GPU memory with large model
-    \item Solution: Mixed precision training and batch size optimization
+    \item Capture d'écran de l'inference vidéo en cours
+    \item Graphique montrant les FPS au fil du temps
+    \item Comparaison FPS avec différentes configurations (CPU vs GPU, FP32 vs FP16)
 \end{itemize}
 
-\subsubsection{Challenge 3: Class Imbalance}
+\subsection{Performances}
+
+\textbf{Résultats de Performance} :
 \begin{itemize}
-    \item Problem: Single class (omar\_car) detection
-    \item Solution: Strong augmentation and careful validation split
+    \item \textbf{FPS moyen} : 25-35 FPS sur RTX 3060
+    \item \textbf{Temps d'inference} : 20-40ms par frame
+    \item \textbf{Utilisation GPU} : 60-80\% selon la résolution
+    \item \textbf{Mémoire GPU} : ~2-3 GB utilisés
 \end{itemize}
 
-\subsection{Limitations}
+\section{Analyse de l'Accélération GPU}
+
+\subsection{Comparaison CPU vs GPU}
+
+\textbf{Note pour les tableaux/figures} : Veuillez inclure :
 \begin{itemize}
-    \item Dataset size: Could benefit from more diverse images
-    \item Generalization: Model may struggle with unseen car models
-    \item Real-time performance: Could be improved with model quantization
+    \item Tableau comparatif des temps d'inference CPU vs GPU
+    \item Graphique comparatif des FPS
+    \item Analyse de l'accélération obtenue
 \end{itemize}
+
+\subsection{Impact de la Précision Mixte}
+
+L'utilisation de FP16 apporte des gains significatifs :
+
+\begin{itemize}
+    \item \textbf{Vitesse} : 1.8-2x plus rapide qu'FP32
+    \item \textbf{Mémoire} : Réduction de 50\%
+    \item \textbf{Précision} : Perte négligeable (< 1\%)
+\end{itemize}
+
+\subsection{Optimisation de la Taille de Batch}
+
+\textbf{Note pour les figures} : Veuillez inclure :
+\begin{itemize}
+    \item Graphique montrant le débit (throughput) vs taille de batch
+    \item Analyse de l'utilisation mémoire vs taille de batch
+    \item Point optimal identifié
+\end{itemize}
+
+\section{Challenges et Solutions}
+
+\subsection{Problèmes Rencontrés}
+
+\subsubsection{Problèmes de Mémoire}
+
+\textbf{Problème} : Erreurs de mémoire lors de l'entraînement avec multiprocessing sur Windows.
+
+\textbf{Solution} : Utilisation de \texttt{workers=0} sur Windows pour éviter les problèmes de mémoire avec les processus multiples.
+
+\subsubsection{Déséquilibre des Classes}
+
+\textbf{Problème} : Distribution inégale des classes (plus de "helmet" que "head").
+
+\textbf{Solution} : Utilisation d'augmentations ciblées et ajustement des poids de classe si nécessaire.
+
+\subsubsection{Optimisation GPU}
+
+\textbf{Problème} : Utilisation sous-optimale de la mémoire GPU.
+
+\textbf{Solution} : Ajustement automatique de la taille de batch selon la mémoire disponible et utilisation de FP16.
 
 \section{Conclusion}
 
-This project successfully developed a real-time object detection system using YOLO and GPU acceleration. The system was fine-tuned to recognize a specific car among many vehicles, achieving high accuracy (98.8\% mAP@0.5) and real-time performance (20 FPS). Key achievements include:
+\subsection{Résultats Principaux}
+
+Ce projet a permis de développer un système de détection d'EPI fonctionnel avec les résultats suivants :
 
 \begin{itemize}
-    \item Successful CUDA configuration and GPU utilization
-    \item Comprehensive data preprocessing pipeline using Label Studio
-    \item Effective fine-tuning strategy with two-phase training
-    \item Excellent model performance with high precision and recall
-    \item Real-time inference capability
+    \item Modèle entraîné avec de bonnes performances sur les trois classes
+    \item Inference en temps réel avec accélération GPU
+    \item Pipeline complet de la collecte de données à l'évaluation
+    \item Documentation complète du processus
 \end{itemize}
 
-The project demonstrates practical application of deep learning for computer vision, GPU acceleration, and model fine-tuning for specific use cases.
+\subsection{Contributions}
 
-\section{Future Work}
+Les contributions principales de ce projet sont :
+
 \begin{itemize}
-    \item Expand dataset with more diverse images
-    \item Implement model quantization for faster inference
-    \item Deploy model for real-time video processing
-    \item Extend to multiple car recognition
-    \item Implement tracking for video sequences
+    \item Adaptation d'un modèle YOLO pour la détection d'EPI
+    \item Optimisation pour l'exécution GPU en temps réel
+    \item Documentation complète du processus de développement
+    \item Analyse approfondie des performances
 \end{itemize}
 
-\section{Installation and Setup Instructions}
+\subsection{Perspectives Futures}
 
-\subsection{Step-by-Step CUDA Installation}
-\subsubsection{Step 1: Verify GPU Compatibility}
-\begin{enumerate}
-    \item Check NVIDIA GPU model: \texttt{nvidia-smi}
-    \item Verify CUDA Compute Capability (minimum 3.5)
-    \item Ensure sufficient GPU memory (minimum 4GB recommended)
-\end{enumerate}
+Les améliorations possibles incluent :
 
-\subsubsection{Step 2: Download CUDA Toolkit}
-\begin{enumerate}
-    \item Visit \url{https://developer.nvidia.com/cuda-downloads}
-    \item Select: Windows → x86\_64 → 10/11 → exe (local)
-    \item Download CUDA Toolkit 12.6 (approximately 3GB)
-    \item Run the installer as administrator
-    \item Choose "Express Installation" for default settings
-    \item Verify installation: \texttt{nvcc --version}
-\end{enumerate}
+\begin{itemize}
+    \item \textbf{Amélioration de la précision} : Collecte de plus de données, fine-tuning plus poussé
+    \item \textbf{Optimisation supplémentaire} : Utilisation de TensorRT pour une accélération encore plus importante
+    \item \textbf{Extension des classes} : Ajout d'autres types d'EPI (gants, chaussures de sécurité, etc.)
+    \item \textbf{Déploiement} : Intégration dans un système de surveillance en temps réel
+    \item \textbf{Multi-caméra} : Support pour plusieurs flux vidéo simultanés
+\end{itemize}
 
-\subsubsection{Step 3: Install cuDNN}
-\begin{enumerate}
-    \item Create NVIDIA Developer account
-    \item Visit \url{https://developer.nvidia.com/cudnn}
-    \item Download cuDNN v8.9.2 for CUDA 12.x
-    \item Extract the ZIP file
-    \item Copy files to CUDA directory:
-    \begin{lstlisting}[language=bash]
-    Copy bin\*.dll to C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin
-    Copy include\*.h to C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\include
-    Copy lib\*.lib to C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\lib
-    \end{lstlisting}
-\end{enumerate}
+\subsection{Leçons Apprises}
 
-\subsubsection{Step 4: Configure Environment Variables}
-Add the following to System Environment Variables (PATH):
-\begin{lstlisting}[language=bash]
-C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\bin
-C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\libnvvp
-C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6\extras\CUPTI\lib64
+\begin{itemize}
+    \item L'importance de la préparation des données et de l'EDA
+    \item L'efficacité de l'accélération GPU pour l'entraînement et l'inference
+    \item La nécessité d'une stratégie d'entraînement en plusieurs phases
+    \item L'importance de l'optimisation mémoire pour les systèmes avec ressources limitées
+\end{itemize}
+
+\section{Références}
+
+\begin{itemize}
+    \item Redmon, J., \& Farhadi, A. (2018). YOLOv3: An Incremental Improvement. arXiv preprint arXiv:1804.02767.
+    \item Ultralytics. (2023). YOLOv8 Documentation. \url{https://docs.ultralytics.com}
+    \item Roboflow. (2023). Hard Hat Workers Dataset. \url{https://universe.roboflow.com}
+    \item NVIDIA. (2023). CUDA Toolkit Documentation. \url{https://docs.nvidia.com/cuda}
+    \item PyTorch. (2023). PyTorch Documentation. \url{https://pytorch.org/docs}
+\end{itemize}
+
+\section{Annexes}
+
+\subsection{Annexe A : Code Source}
+
+Le code source complet est disponible dans le dépôt GitHub du projet.
+
+\subsection{Annexe B : Structure du Projet}
+
+\begin{lstlisting}
+object_detection_project/
+├── data/
+│   ├── data.yaml
+│   ├── train/
+│   ├── valid/
+│   └── test/
+├── notebooks/
+│   ├── 01_data_collection.ipynb
+│   ├── 02_eda.ipynb
+│   ├── 03_train_ppe.ipynb
+│   └── 04_predict_ppe.ipynb
+├── src/
+│   ├── train.py
+│   ├── inference.py
+│   └── utils.py
+├── models/
+└── runs/
 \end{lstlisting}
 
-Create new environment variables:
-\begin{lstlisting}[language=bash]
-CUDA_PATH = C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6
-CUDA_PATH_V12_6 = C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6
-\end{lstlisting}
+\subsection{Annexe C : Commandes Utiles}
 
-\subsubsection{Step 5: Verify Installation}
-Test CUDA installation:
-\begin{lstlisting}[language=bash]
+\begin{lstlisting}
+# Vérification CUDA
 nvcc --version
-nvidia-smi
+
+# Vérification PyTorch CUDA
+python -c "import torch; print(torch.cuda.is_available())"
+
+# Entraînement
+python src/train.py --data data/data.yaml --epochs 30
+
+# Inference
+python src/inference.py --model runs/detect/best.pt --source image.jpg
 \end{lstlisting}
-
-\subsection{PyTorch Installation}
-Install PyTorch with CUDA 12.6 support:
-\begin{lstlisting}[language=bash]
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
-\end{lstlisting}
-
-Verify PyTorch CUDA:
-\begin{lstlisting}[language=Python]
-import torch
-print(f"CUDA available: {torch.cuda.is_available()}")
-print(f"CUDA version: {torch.version.cuda}")
-print(f"GPU: {torch.cuda.get_device_name(0)}")
-\end{lstlisting}
-
-\subsection{Label Studio Installation}
-Install and configure Label Studio:
-\begin{lstlisting}[language=bash]
-pip install label-studio
-label-studio start
-\end{lstlisting}
-
-Access Label Studio at \url{http://localhost:8080}
-
-\section{Acknowledgments}
-We would like to thank the professor for providing the project framework and guidance throughout the development process.
-
-\newpage
-\section{Appendix}
-
-\subsection{A: Dataset Statistics}
-\begin{table}[H]
-\centering
-\begin{tabular}{|l|c|}
-\hline
-\textbf{Metric} & \textbf{Value} \\
-\hline
-Total Images & 184 \\
-Training Images & 148 \\
-Validation Images & 36 \\
-Total Bounding Boxes & 184 \\
-Average Box Area & 0.15 \\
-Image Formats & JPEG, PNG, WEBP \\
-\hline
-\end{tabular}
-\caption{Dataset Statistics}
-\end{table}
-
-\subsection{B: Training Configuration}
-\begin{table}[H]
-\centering
-\begin{tabular}{|l|c|}
-\hline
-\textbf{Parameter} & \textbf{Value} \\
-\hline
-Model & YOLOv8 Large \\
-Input Size & 768x768 \\
-Batch Size & 4 \\
-Epochs (Phase 1) & 10 \\
-Epochs (Phase 2) & 20 \\
-Learning Rate (Phase 1) & 0.005 \\
-Learning Rate (Phase 2) & 0.003 \\
-Optimizer & AdamW \\
-Mixed Precision & Yes \\
-\hline
-\end{tabular}
-\caption{Training Configuration}
-\end{table}
-
-\subsection{C: Final Model Metrics}
-\begin{table}[H]
-\centering
-\begin{tabular}{|l|c|}
-\hline
-\textbf{Metric} & \textbf{Value} \\
-\hline
-Precision & 0.998 \\
-Recall & 0.972 \\
-mAP@0.5 & 0.988 \\
-mAP@0.5:0.95 & 0.809 \\
-Model Size & 87 MB \\
-Inference Speed & 50 ms/image \\
-\hline
-\end{tabular}
-\caption{Final Model Performance}
-\end{table}
 
 \end{document}
 

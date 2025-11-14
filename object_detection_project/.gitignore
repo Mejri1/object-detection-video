@@ -44,19 +44,18 @@ venv.bak/
 *.h5
 *.onnx
 *.pkl
-models/
 *.weights
+models/
+notebooks/*.pt
 
 # Data directories
-data/images/
-data/labels/
-data/test/
-data/yolo_ft/
-data/*.cache
-*.cache
+data/
+!data/data.yaml
+!data/README*
 
 # Training outputs
 runs/
+!runs/.gitkeep
 notebooks/runs/
 *.csv
 *.png
